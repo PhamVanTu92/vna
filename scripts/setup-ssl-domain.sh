@@ -52,15 +52,23 @@ else
   ok "Nginx started"
 fi
 
-# Hàm reload an toàn: thử systemctl trước, fallback về nginx -s reload
+# Hàm reload an toàn — thử nhiều cách, không phụ thuộc systemd hay pid file
 nginx_reload() {
+  # Cách 1: tìm nginx master process và gửi SIGHUP trực tiếp (đáng tin nhất)
+  local master_pid
+  master_pid=$(ps aux | awk '/nginx: master process/{print $2}' | head -1)
+  if [[ -n "$master_pid" ]]; then
+    kill -HUP "$master_pid" && sleep 1 && ok "Nginx reloaded via kill -HUP (pid $master_pid)" && return 0
+  fi
+  # Cách 2: nginx -s reload (cần pid file)
+  if nginx -s reload 2>/dev/null; then
+    return 0
+  fi
+  # Cách 3: systemctl (nếu quản lý qua systemd)
   if systemctl reload nginx 2>/dev/null; then
     return 0
-  elif nginx -s reload 2>/dev/null; then
-    return 0
-  else
-    err "Không thể reload nginx. Kiểm tra: nginx -t"
   fi
+  err "Không thể reload nginx. Chạy thủ công: nginx -t && kill -HUP \$(ps aux | awk '/nginx: master/{print \$2}' | head -1)"
 }
 
 # ── 2. Cài Certbot ────────────────────────────────────────────────────────────
