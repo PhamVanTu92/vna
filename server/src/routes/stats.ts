@@ -59,20 +59,25 @@ router.get('/', async (req: AuthRequest, res) => {
   // Per-branch breakdown (chỉ system_admin)
   let byBranch: object[] = [];
   if (req.user!.role === 'system_admin') {
-    // Prisma infers these types — annotating them directly conflicts with generic constraints
+    // Bước 1: gọi Prisma — để TypeScript infer type hoàn toàn (không annotate)
     const branchDocs = await prisma.ocrDocument.groupBy({
       by: ['branchId'],
       where: { status: 'completed', period: { in: months } },
       _count: { id: true },
       _sum:   { costUsd: true }
     });
+    // Bước 2: extract element type từ kết quả Prisma (không tự định nghĩa lại)
+    type BrGroupRow = (typeof branchDocs)[number];
+
     const branches = await prisma.branch.findMany({
-      where: { id: { in: branchDocs.map(b => b.branchId) } },
+      where: { id: { in: branchDocs.map((b: BrGroupRow) => b.branchId) } },
       select: { id: true, name: true, code: true }
     });
-    byBranch = branchDocs.map(b => ({
+    type BranchRow = (typeof branches)[number];
+
+    byBranch = branchDocs.map((b: BrGroupRow) => ({
       branchId: b.branchId,
-      branch:   branches.find(br => br.id === b.branchId),
+      branch:   branches.find((br: BranchRow) => br.id === b.branchId),
       count:    b._count.id,
       costUsd:  b._sum.costUsd ?? 0
     }));
