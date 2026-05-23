@@ -5,12 +5,9 @@
 # Domain mặc định: vnarpa.foxai.com.vn
 # App chạy trong Docker tại: 127.0.0.1:3002 (host port)
 #
-# Yêu cầu:
-#   - Ubuntu 22.04 / 24.04
-#   - Nginx đã cài và đang chạy (server này đã có sẵn)
-#   - DNS: A record vnarpa.foxai.com.vn → IP server này đã được trỏ
-#   - Docker container đang chạy (docker compose up -d)
-#   - Chạy với quyền root: sudo bash scripts/setup-ssl-domain.sh
+# Dùng certbot certonly --webroot (KHÔNG dùng --nginx plugin)
+# vì server này nginx không qua systemd — certbot --nginx sẽ restart nginx
+# mới → bind() failed vì ports đã bị giữ bởi nginx cũ.
 # =============================================================================
 set -e
 
@@ -32,49 +29,42 @@ echo -e "${BOLD} Nginx + SSL Setup cho ${CYAN}${DOMAIN}${NC}"
 echo -e "${BOLD}════════════════════════════════════════════${NC}"
 echo ""
 
-# ── 1. Kiểm tra Nginx ─────────────────────────────────────────────────────────
-log "Kiểm tra Nginx..."
-if ! command -v nginx &>/dev/null; then
-  log "Cài Nginx..."
-  apt-get update -qq && apt-get install -y -qq nginx
-fi
-
-# Dùng pgrep thay vì systemctl — nginx trên server này chạy trực tiếp,
-# không qua systemd → systemctl is-active trả false dù nginx đang chạy
-if pgrep -x nginx > /dev/null 2>&1; then
-  ok "Nginx process đang chạy: $(nginx -v 2>&1)"
-elif ss -tlnp | grep -q ':80 '; then
-  ok "Port 80 đang được dùng bởi nginx (hoặc process khác)"
-else
-  log "Nginx chưa chạy, khởi động..."
-  # Thử systemctl trước, nếu fail thì dùng lệnh trực tiếp
-  systemctl start nginx 2>/dev/null || nginx
-  ok "Nginx started"
-fi
-
-# Hàm reload an toàn — thử nhiều cách, không phụ thuộc systemd hay pid file
+# ── Hàm reload nginx — KHÔNG restart, chỉ SIGHUP master process ──────────────
 nginx_reload() {
-  # Cách 1: tìm nginx master process và gửi SIGHUP trực tiếp (đáng tin nhất)
   local master_pid
   master_pid=$(ps aux | awk '/nginx: master process/{print $2}' | head -1)
   if [[ -n "$master_pid" ]]; then
-    kill -HUP "$master_pid" && sleep 1 && ok "Nginx reloaded via kill -HUP (pid $master_pid)" && return 0
+    kill -HUP "$master_pid"
+    sleep 1
+    ok "Nginx reloaded (kill -HUP pid=$master_pid)"
+    return 0
   fi
-  # Cách 2: nginx -s reload (cần pid file)
+  # Fallback: nginx -s reload dùng pid file
   if nginx -s reload 2>/dev/null; then
+    ok "Nginx reloaded (nginx -s reload)"
     return 0
   fi
-  # Cách 3: systemctl (nếu quản lý qua systemd)
-  if systemctl reload nginx 2>/dev/null; then
-    return 0
-  fi
-  err "Không thể reload nginx. Chạy thủ công: nginx -t && kill -HUP \$(ps aux | awk '/nginx: master/{print \$2}' | head -1)"
+  err "Không reload được nginx. Thử thủ công: kill -HUP \$(ps aux | awk '/nginx: master/{print \$2}' | head -1)"
 }
 
-# ── 2. Cài Certbot ────────────────────────────────────────────────────────────
+# ── 1. Kiểm tra Nginx ─────────────────────────────────────────────────────────
+log "Kiểm tra Nginx..."
+command -v nginx &>/dev/null || { apt-get update -qq && apt-get install -y -qq nginx; }
+
+if pgrep -x nginx > /dev/null 2>&1; then
+  ok "Nginx đang chạy: $(nginx -v 2>&1)"
+else
+  warn "Nginx chưa chạy — thử khởi động..."
+  nginx || err "Không khởi động được nginx"
+  ok "Nginx started"
+fi
+
+# ── 2. Cài Certbot (certbot-only, KHÔNG cài nginx plugin) ─────────────────────
 log "Kiểm tra / cài Certbot..."
 if ! command -v certbot &>/dev/null; then
-  apt-get update -qq && apt-get install -y -qq certbot python3-certbot-nginx
+  apt-get update -qq
+  # Chỉ cài certbot thuần, không cần python3-certbot-nginx
+  apt-get install -y -qq certbot
 fi
 ok "Certbot: $(certbot --version 2>&1)"
 
@@ -84,7 +74,7 @@ SERVER_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null \
          || curl -s --max-time 5 http://checkip.amazonaws.com 2>/dev/null \
          || echo "unknown")
 DNS_IP=$(getent hosts "$DOMAIN" 2>/dev/null | awk '{print $1}' \
-      || dig +short "$DOMAIN" 2>/dev/null | tail -1 \
+      || dig +short "$DOMAIN" 2>/dev/null | grep -v '\.$' | tail -1 \
       || echo "")
 
 echo "  Server IP (public): ${SERVER_IP}"
@@ -93,36 +83,32 @@ echo "  DNS IP for domain:  ${DNS_IP:-không resolve được}"
 if [[ -n "$DNS_IP" && "$DNS_IP" == "$SERVER_IP" ]]; then
   ok "DNS trỏ đúng!"
 else
-  warn "DNS chưa verify được (IP: ${DNS_IP:-N/A} ≠ ${SERVER_IP})"
-  warn "Certbot sẽ FAIL nếu domain chưa trỏ về server này."
+  warn "DNS chưa khớp (resolve: ${DNS_IP:-N/A} | server: ${SERVER_IP})"
+  warn "Certbot FAIL nếu domain chưa trỏ về server này."
   echo ""
   read -rp "  Tiếp tục? [y/N] " yn
-  [[ "$yn" != "y" && "$yn" != "Y" ]] && err "Dừng lại — hãy cấu hình DNS A record trước."
+  [[ "$yn" != "y" && "$yn" != "Y" ]] && err "Dừng lại."
 fi
 
-# ── 4. Tạo Nginx config HTTP-ONLY ─────────────────────────────────────────────
-# QUAN TRỌNG: Chỉ HTTP trước — certbot sẽ tự thêm HTTPS block sau
-# Không đưa SSL paths vào đây vì cert chưa tồn tại → nginx -t sẽ fail
-log "Tạo Nginx HTTP config cho ${DOMAIN}..."
-
+# ── 4. Nginx config HTTP-ONLY (cho certbot webroot challenge) ─────────────────
+log "Tạo Nginx HTTP config..."
 NGINX_CONF="/etc/nginx/sites-available/${DOMAIN}"
+mkdir -p /var/www/certbot
 
 cat > "$NGINX_CONF" << NGINXEOF
-# ${DOMAIN} — HTTP only (certbot sẽ tự thêm HTTPS block bên dưới)
+# ${DOMAIN} — HTTP only (HTTPS block sẽ được thêm sau khi có cert)
 server {
     listen 80;
     listen [::]:80;
     server_name ${DOMAIN};
-
     client_max_body_size 150m;
 
-    # Cho phép certbot verify domain qua webroot
+    # Certbot webroot challenge
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
         allow all;
     }
 
-    # Proxy tất cả request đến Docker app
     location / {
         proxy_pass         http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
@@ -132,7 +118,6 @@ server {
         proxy_set_header   X-Real-IP         \$remote_addr;
         proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
         proxy_read_timeout    120s;
         proxy_connect_timeout 10s;
         proxy_send_timeout    120s;
@@ -140,62 +125,131 @@ server {
 }
 NGINXEOF
 
-mkdir -p /var/www/certbot
-
-# Kích hoạt site
 ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/${DOMAIN}"
-
-# Test config và reload — phải pass vì chỉ có HTTP
-log "Test và reload Nginx (HTTP only)..."
-nginx -t || err "Nginx config test thất bại! Kiểm tra: nginx -t"
+nginx -t || err "Nginx config lỗi! Kiểm tra: nginx -t"
 nginx_reload
-ok "Nginx reload OK — site HTTP đang hoạt động"
+ok "HTTP config active"
 
-# ── 5. Cấp SSL certificate ────────────────────────────────────────────────────
-log "Cấp SSL certificate cho ${DOMAIN}..."
-echo "  Email: ${EMAIL}"
+# ── 5. Cấp SSL cert dùng --webroot (KHÔNG --nginx, KHÔNG restart nginx) ───────
+log "Cấp SSL certificate (webroot mode)..."
+echo "  Email : ${EMAIL}"
+echo "  Domain: ${DOMAIN}"
 echo ""
 
 if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
-  warn "Cert đã tồn tại → chạy renew"
-  certbot renew --nginx --cert-name "$DOMAIN" --non-interactive
+  warn "Cert đã tồn tại → renew"
+  certbot renew \
+    --webroot -w /var/www/certbot \
+    --cert-name "$DOMAIN" \
+    --non-interactive \
+    --quiet
 else
-  # certbot --nginx tự động:
-  # 1. Verify domain ownership qua HTTP-01 challenge
-  # 2. Download cert
-  # 3. Chỉnh sửa nginx config — thêm HTTPS server block + redirect
-  certbot --nginx \
+  # certonly + webroot: lấy cert mà KHÔNG đụng vào nginx process
+  certbot certonly \
+    --webroot \
+    -w /var/www/certbot \
     -d "$DOMAIN" \
     --non-interactive \
     --agree-tos \
-    --email "$EMAIL" \
-    --redirect
+    --email "$EMAIL"
 fi
 
-ok "SSL certificate OK!"
+CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+[[ -f "${CERT_DIR}/fullchain.pem" ]] || err "Cert không tồn tại sau khi certbot chạy!"
+ok "SSL certificate OK → ${CERT_DIR}"
 
-# ── 6. Thêm security headers và gzip vào HTTPS block do certbot tạo ──────────
-# certbot đã tạo HTTPS block — chỉ reload lại để chắc chắn
-log "Final reload Nginx với SSL config..."
-nginx -t || err "Nginx config có lỗi sau certbot. Kiểm tra: nginx -t"
+# ── 6. Viết lại nginx config với HTTPS (cert đã có) ──────────────────────────
+log "Viết Nginx HTTPS config..."
+
+cat > "$NGINX_CONF" << NGINXEOF
+# ${DOMAIN} — HTTP redirect + HTTPS proxy
+
+# HTTP → HTTPS redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        allow all;
+    }
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+# HTTPS
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${DOMAIN};
+
+    # SSL cert (Let's Encrypt)
+    ssl_certificate     ${CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${CERT_DIR}/privkey.pem;
+
+    # SSL hardening
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_ciphers               ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options           "SAMEORIGIN"                          always;
+    add_header X-Content-Type-Options    "nosniff"                             always;
+
+    client_max_body_size 150m;
+
+    # Proxy → Docker app
+    location / {
+        proxy_pass         http://127.0.0.1:${APP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade           \$http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_set_header   Host              \$host;
+        proxy_set_header   X-Real-IP         \$remote_addr;
+        proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+        proxy_read_timeout    120s;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout    120s;
+    }
+
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+    gzip_min_length 1024;
+
+    access_log /var/log/nginx/${DOMAIN}-access.log;
+    error_log  /var/log/nginx/${DOMAIN}-error.log warn;
+}
+NGINXEOF
+
+# Test và reload — KHÔNG restart
+nginx -t || err "Nginx HTTPS config lỗi! Kiểm tra: nginx -t"
 nginx_reload
-ok "Nginx reloaded với HTTPS"
+ok "HTTPS config active"
 
 # ── 7. Kiểm tra app ───────────────────────────────────────────────────────────
-log "Kiểm tra Docker app trên port ${APP_PORT}..."
+log "Kiểm tra app health..."
 HEALTH=$(curl -s --max-time 5 "http://127.0.0.1:${APP_PORT}/health" 2>/dev/null || echo "")
 if echo "$HEALTH" | grep -q '"status":"ok"'; then
   ok "App healthy!"
 else
   warn "App chưa response tại port ${APP_PORT}."
-  warn "Đảm bảo container đang chạy: cd ~/VNARPA/vna && docker compose up -d"
+  warn "Khởi động Docker: cd ~/VNARPA/vna && docker compose up -d"
 fi
 
-# ── 8. Auto-renew cronjob ─────────────────────────────────────────────────────
+# ── 8. Auto-renew cronjob (dùng webroot, KHÔNG --nginx) ──────────────────────
 log "Cấu hình auto-renew SSL..."
-CRON_JOB="0 3,15 * * * certbot renew --quiet --nginx --post-hook 'nginx -s reload'"
+MASTER_PID_CMD='kill -HUP $(ps aux | awk "/nginx: master process/{print \$2}" | head -1)'
+CRON_JOB="0 3,15 * * * certbot renew --webroot -w /var/www/certbot --quiet --post-hook '${MASTER_PID_CMD}'"
 (crontab -l 2>/dev/null | grep -v "certbot renew"; echo "$CRON_JOB") | crontab -
-ok "Cron: certbot renew chạy lúc 3:00 và 15:00 hằng ngày"
+ok "Cron: certbot renew lúc 3:00 và 15:00 hằng ngày"
 
 # ── Done ─────────────────────────────────────────────────────────────────────
 echo ""
@@ -208,7 +262,7 @@ echo -e "  📊  https://${DOMAIN}/health"
 echo ""
 echo -e "  Lệnh hữu ích:"
 echo -e "  • Log app:       ${CYAN}docker compose logs -f app${NC}"
-echo -e "  • Reload nginx:  ${CYAN}nginx -s reload${NC}"
+echo -e "  • Reload nginx:  ${CYAN}kill -HUP \$(ps aux | awk '/nginx: master/{print \$2}' | head -1)${NC}"
 echo -e "  • Test SSL:      ${CYAN}curl -I https://${DOMAIN}${NC}"
-echo -e "  • Renew test:    ${CYAN}certbot renew --dry-run${NC}"
+echo -e "  • Renew test:    ${CYAN}certbot renew --dry-run --webroot -w /var/www/certbot${NC}"
 echo ""
