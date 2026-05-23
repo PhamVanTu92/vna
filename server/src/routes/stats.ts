@@ -5,6 +5,13 @@ import { authMiddleware, AuthRequest } from '../auth/authMiddleware';
 const router = Router();
 router.use(authMiddleware as any);
 
+// ── Local type (avoid implicit any in strict mode) ────────────────────────────
+type DocRow = {
+  period:     string | null;
+  tokensUsed: number | null;
+  costUsd:    number | null;
+};
+
 // ── GET /api/stats ────────────────────────────────────────────────────────────
 // Trả về thống kê 12 tháng gần nhất cho chi nhánh hiện tại (hoặc tất cả với system_admin)
 router.get('/', async (req: AuthRequest, res) => {
@@ -20,7 +27,7 @@ router.get('/', async (req: AuthRequest, res) => {
   }
 
   // Tổng theo tháng
-  const docs = await prisma.ocrDocument.findMany({
+  const docs: DocRow[] = await prisma.ocrDocument.findMany({
     where: {
       ...branchFilter,
       status: 'completed',
@@ -29,29 +36,30 @@ router.get('/', async (req: AuthRequest, res) => {
     select: { period: true, tokensUsed: true, costUsd: true }
   });
 
-  const monthly = months.map(month => {
-    const monthDocs = docs.filter(d => d.period === month);
+  const monthly = months.map((month: string) => {
+    const monthDocs = docs.filter((d: DocRow) => d.period === month);
     return {
       month,
-      count:    monthDocs.length,
-      tokens:   monthDocs.reduce((s, d) => s + (d.tokensUsed ?? 0), 0),
-      costUsd:  monthDocs.reduce((s, d) => s + (d.costUsd  ?? 0), 0)
+      count:   monthDocs.length,
+      tokens:  monthDocs.reduce((s: number, d: DocRow) => s + (d.tokensUsed ?? 0), 0),
+      costUsd: monthDocs.reduce((s: number, d: DocRow) => s + (d.costUsd   ?? 0), 0)
     };
   });
 
   // KPI tháng hiện tại
   const currentMonth = months[11];
-  const currentMonthDocs = docs.filter(d => d.period === currentMonth);
+  const currentMonthDocs = docs.filter((d: DocRow) => d.period === currentMonth);
   const kpi = {
-    thisMonth:       currentMonthDocs.length,
-    thisMonthCost:   currentMonthDocs.reduce((s, d) => s + (d.costUsd ?? 0), 0),
-    total:           docs.length,
-    totalCost:       docs.reduce((s, d) => s + (d.costUsd ?? 0), 0),
+    thisMonth:     currentMonthDocs.length,
+    thisMonthCost: currentMonthDocs.reduce((s: number, d: DocRow) => s + (d.costUsd ?? 0), 0),
+    total:         docs.length,
+    totalCost:     docs.reduce((s: number, d: DocRow) => s + (d.costUsd ?? 0), 0),
   };
 
   // Per-branch breakdown (chỉ system_admin)
-  let byBranch: any[] = [];
+  let byBranch: object[] = [];
   if (req.user!.role === 'system_admin') {
+    // Prisma infers these types — annotating them directly conflicts with generic constraints
     const branchDocs = await prisma.ocrDocument.groupBy({
       by: ['branchId'],
       where: { status: 'completed', period: { in: months } },
