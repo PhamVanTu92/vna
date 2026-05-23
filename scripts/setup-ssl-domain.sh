@@ -39,15 +39,29 @@ if ! command -v nginx &>/dev/null; then
   apt-get update -qq && apt-get install -y -qq nginx
 fi
 
-# Không gọi start/restart — chỉ kiểm tra trạng thái
-if systemctl is-active --quiet nginx; then
-  ok "Nginx đang chạy: $(nginx -v 2>&1)"
+# Dùng pgrep thay vì systemctl — nginx trên server này chạy trực tiếp,
+# không qua systemd → systemctl is-active trả false dù nginx đang chạy
+if pgrep -x nginx > /dev/null 2>&1; then
+  ok "Nginx process đang chạy: $(nginx -v 2>&1)"
+elif ss -tlnp | grep -q ':80 '; then
+  ok "Port 80 đang được dùng bởi nginx (hoặc process khác)"
 else
   log "Nginx chưa chạy, khởi động..."
-  systemctl enable nginx --quiet
-  systemctl start nginx
+  # Thử systemctl trước, nếu fail thì dùng lệnh trực tiếp
+  systemctl start nginx 2>/dev/null || nginx
   ok "Nginx started"
 fi
+
+# Hàm reload an toàn: thử systemctl trước, fallback về nginx -s reload
+nginx_reload() {
+  if systemctl reload nginx 2>/dev/null; then
+    return 0
+  elif nginx -s reload 2>/dev/null; then
+    return 0
+  else
+    err "Không thể reload nginx. Kiểm tra: nginx -t"
+  fi
+}
 
 # ── 2. Cài Certbot ────────────────────────────────────────────────────────────
 log "Kiểm tra / cài Certbot..."
@@ -126,7 +140,7 @@ ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/${DOMAIN}"
 # Test config và reload — phải pass vì chỉ có HTTP
 log "Test và reload Nginx (HTTP only)..."
 nginx -t || err "Nginx config test thất bại! Kiểm tra: nginx -t"
-systemctl reload nginx
+nginx_reload
 ok "Nginx reload OK — site HTTP đang hoạt động"
 
 # ── 5. Cấp SSL certificate ────────────────────────────────────────────────────
@@ -156,7 +170,7 @@ ok "SSL certificate OK!"
 # certbot đã tạo HTTPS block — chỉ reload lại để chắc chắn
 log "Final reload Nginx với SSL config..."
 nginx -t || err "Nginx config có lỗi sau certbot. Kiểm tra: nginx -t"
-systemctl reload nginx
+nginx_reload
 ok "Nginx reloaded với HTTPS"
 
 # ── 7. Kiểm tra app ───────────────────────────────────────────────────────────
@@ -171,7 +185,7 @@ fi
 
 # ── 8. Auto-renew cronjob ─────────────────────────────────────────────────────
 log "Cấu hình auto-renew SSL..."
-CRON_JOB="0 3,15 * * * certbot renew --quiet --nginx --post-hook 'systemctl reload nginx'"
+CRON_JOB="0 3,15 * * * certbot renew --quiet --nginx --post-hook 'nginx -s reload'"
 (crontab -l 2>/dev/null | grep -v "certbot renew"; echo "$CRON_JOB") | crontab -
 ok "Cron: certbot renew chạy lúc 3:00 và 15:00 hằng ngày"
 
@@ -186,7 +200,7 @@ echo -e "  📊  https://${DOMAIN}/health"
 echo ""
 echo -e "  Lệnh hữu ích:"
 echo -e "  • Log app:       ${CYAN}docker compose logs -f app${NC}"
-echo -e "  • Reload nginx:  ${CYAN}systemctl reload nginx${NC}"
+echo -e "  • Reload nginx:  ${CYAN}nginx -s reload${NC}"
 echo -e "  • Test SSL:      ${CYAN}curl -I https://${DOMAIN}${NC}"
 echo -e "  • Renew test:    ${CYAN}certbot renew --dry-run${NC}"
 echo ""
