@@ -1,0 +1,85 @@
+version: '3.9'
+
+# =============================================================================
+# docker-compose.yml — VNA NRT Accountant Assistant
+#
+# Khởi động:  docker compose up -d
+# Xem log:    docker compose logs -f app
+# Dừng:       docker compose down
+# Build lại:  docker compose up -d --build
+# =============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Cache build layers hiệu quả hơn
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: vna-nrt-app:latest
+    container_name: vna-nrt-app
+    restart: unless-stopped
+
+    # Chỉ bind localhost — Nginx trên host là cổng vào duy nhất
+    # PORT 3001 và 3000 đã bị chiếm bởi project khác → dùng 3002
+    ports:
+      - "127.0.0.1:3002:3001"
+
+    environment:
+      NODE_ENV: production
+      PORT: "3001"   # port BÊN TRONG container (không đổi)
+      # SQLite lưu vào volume (persist qua restart + update)
+      DATABASE_URL: "file:/app/data/app.db"
+
+    # Đọc secrets từ server/.env (KHÔNG bake vào image)
+    env_file:
+      - ./server/.env
+
+    volumes:
+      # Persistent SQLite database
+      - vna_data:/app/data
+      # Optional: mount logs ra host để xem dễ hơn
+      - ./logs:/app/logs
+
+    # Health check — Nginx và monitoring tool dùng
+    healthcheck:
+      # Kiểm tra từ BÊN TRONG container → port 3001 nội bộ
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    # Giới hạn resource (tuỳ chỉnh theo RAM server)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      - vna_net
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  vna_data:
+    driver: local
+    # Nếu muốn chỉ định vị trí cụ thể trên host, uncomment:
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /var/www/vna-nrt-app/data
+
+# ── Network ───────────────────────────────────────────────────────────────────
+networks:
+  vna_net:
+    name: vna_net
+    driver: bridge

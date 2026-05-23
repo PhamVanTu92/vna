@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── License ───────────────────────────────────────────────────────────────────
+model License {
+  id           Int      @id @default(1)
+  licenseKey   String
+  customerId   String
+  customerName String
+  issuedAt     DateTime
+  expiresAt    DateTime
+  maxUsers     Int
+  product      String
+  activatedAt  DateTime @default(now())
+  activatedBy  Int?
+  @@map("license")
+}
+
+model LicenseClock {
+  id         Int      @id @default(1)
+  lastSeenAt DateTime @default(now())
+  tickCount  Int      @default(0)
+  @@map("license_clock")
+}
+
+// ── Organisation ──────────────────────────────────────────────────────────────
+model Branch {
+  id          Int      @id @default(autoincrement())
+  parentId    Int?
+  parent      Branch?  @relation("BranchTree", fields: [parentId], references: [id])
+  children    Branch[] @relation("BranchTree")
+  name        String
+  code        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  settings  BranchSettings?
+  users     User[]
+  documents OcrDocument[]
+
+  @@map("branches")
+}
+
+model BranchSettings {
+  id           Int      @id @default(autoincrement())
+  branchId     Int      @unique
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  systemPrompt String?  // null = dùng DEFAULT_SYSTEM_PROMPT
+  geminiModel  String   @default("gemini-3-pro-preview")
+  updatedAt    DateTime @updatedAt
+  updatedById  Int?
+
+  @@map("branch_settings")
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         String   @default("user")  // system_admin | branch_admin | user
+  branchId     Int?
+  branch       Branch?  @relation(fields: [branchId], references: [id])
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  documents OcrDocument[] @relation("DocumentUploader")
+
+  @@map("users")
+}
+
+// ── OCR Documents ─────────────────────────────────────────────────────────────
+model OcrDocument {
+  id           Int       @id @default(autoincrement())
+  branchId     Int
+  branch       Branch    @relation(fields: [branchId], references: [id])
+  uploadedById Int
+  uploadedBy   User      @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  fileName     String
+  fileSize     Int       @default(0)
+  period       String?   // "2025-04"
+  status       String    @default("completed")  // processing | completed | error
+  result       String    @default("[]") // JSON string của LineItem[]
+  geminiModel  String    @default("")
+  tokensUsed   Int?
+  costUsd      Float?
+  exportedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@map("ocr_documents")
+}

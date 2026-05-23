@@ -1,0 +1,41 @@
+{
+  "name": "vna-nrt-accountant-assistant",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:server": "cd server && npm run build",
+    "build:all": "npm run build && npm run build:server",
+    "start:prod": "node server/dist/index.js",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:reload": "pm2 reload vna-nrt-app",
+    "pm2:logs": "pm2 logs vna-nrt-app",
+    "db:migrate": "cd server && npx prisma migrate deploy",
+    "db:studio": "cd server && npx prisma studio",
+    "docker:build": "docker build -t vna-nrt-app:latest .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f app",
+    "docker:restart": "docker compose restart app",
+    "docker:rebuild": "docker compose up -d --build",
+    "docker:shell": "docker compose exec app sh",
+    "ports:check": "bash scripts/check-ports.sh"
+  },
+  "dependencies": {
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-router-dom": "^7.15.1",
+    "recharts": "^3.6.0",
+    "xlsx-js-style": "1.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

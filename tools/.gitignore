@@ -1,0 +1,6 @@
+# TUYỆT ĐỐI không commit private key lên git
+vendor-private.pem
+node_modules/
+
+# License history (chứa thông tin khách hàng — lưu local)
+license-history.jsonl

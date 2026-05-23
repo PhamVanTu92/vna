@@ -1,0 +1,12 @@
+// Public key của vendor — được nhúng cứng vào backend.
+// Private key tương ứng nằm ở tools/vendor-private.pem (chỉ vendor giữ).
+// Khách hàng không thể tự tạo license key hợp lệ nếu không có private key.
+export const VENDOR_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3d2yZ8U70MH9QuzxG+Tr
+9LPEkuykFUWI9DTY9pkPcSP2Go5JE6S1ZGU/v5wy8uS0NF3KzzaKJAzkzVu1qR+X
+o7T3VSUtn29kNPL7JNOnXVZFfXYli1OgMGWEAkTuzv65wzzXDrHqALMXbO9QHtQw
+rvBepe1Q4o+49RDGIQKVZ+YwAYBBahw5b0wmyROeOz1y1Z4o39Pb/1R3ZmhnlVXE
+WrQiHrZ9Q/c7V5dg54T806dlJEN9DQrOE0XdI5iH1jyHOfOwB36DNf1vOsxRweoa
+Lxd7m+CSI3AU9jmmaXW7JTmqEsOuQJpmaml1A6X3ngxdVqCqb9GjS+9CeyoB/Vpi
+CQIDAQAB
+-----END PUBLIC KEY-----`;

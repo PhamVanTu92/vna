@@ -1,0 +1,5 @@
+{
+  "name": "VNA NRT Accountant Assistant",
+  "description": "An AI-powered tool for Vietnam Airlines NRT Branch to process monthly payment PDFs and generate CV2006 compatible CSV reports using Gemini 3.0 Pro.",
+  "requestFramePermissions": []
+}

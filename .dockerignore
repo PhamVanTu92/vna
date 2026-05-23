@@ -1,0 +1,38 @@
+# ── Dependencies (cài lại trong Docker) ──────────────────────────────────────
+node_modules
+server/node_modules
+
+# ── Build outputs (build lại trong Docker) ───────────────────────────────────
+dist
+dist-ssr
+server/dist
+
+# ── Database (dùng volume riêng) ──────────────────────────────────────────────
+server/prisma/dev.db
+server/prisma/*.db-shm
+server/prisma/*.db-wal
+data/
+
+# ── Secrets (KHÔNG bao giờ bake vào image) ───────────────────────────────────
+.env
+.env.*
+server/.env
+# .env.example được phép (không có secret thật)
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Dev tools ─────────────────────────────────────────────────────────────────
+tools/vendor-private.pem
+*.md
+logs/
+.vscode/
+.idea/
+*.suo
+*.sw?
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

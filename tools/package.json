@@ -1,0 +1,12 @@
+{
+  "name": "vna-license-tools",
+  "version": "1.0.0",
+  "description": "Vendor tools — tạo và quản lý license key. KHÔNG deploy lên server khách hàng.",
+  "scripts": {
+    "setup-keys": "node setup-keys.js",
+    "generate": "node generate-license.js"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  }
+}

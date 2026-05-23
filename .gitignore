@@ -1,0 +1,58 @@
+# Environment files (KHÔNG được commit API key lên git)
+.env
+.env.*
+server/.env
+!server/.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Backend build output
+server/dist/
+
+# Runtime database (production dùng file riêng trên server)
+server/prisma/dev.db
+server/prisma/dev.db-journal
+server/prisma/*.db-shm
+server/prisma/*.db-wal
+
+# PM2 logs
+logs/
+*.log
+
+# Vendor RSA keys (KHÔNG bao giờ commit private key!)
+tools/vendor-private.pem
+
+# Docker volume data (SQLite runtime DB)
+data/
+
+# Docker build cache
+.docker-cache/
+
+# Claude Code workspace memory (local only)
+.claude/
+
+# Migrated prompt history (local only)
+migrated_prompt_history/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
