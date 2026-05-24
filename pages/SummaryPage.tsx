@@ -40,7 +40,7 @@ export const SummaryPage: React.FC = () => {
       const [statsRes, reconRes, branchRes] = await Promise.all([
         fetch(`/api/stats`, { headers: { Authorization: `Bearer ${token()}` } }),
         fetch(`/api/reconcile?limit=1000&period=${period}`, { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch('/api/branches', { headers: { Authorization: `Bearer ${token()}` } }),
+        fetch('/api/admin/branches', { headers: { Authorization: `Bearer ${token()}` } }),
       ]);
 
       let allItems: any[] = [];

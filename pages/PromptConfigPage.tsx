@@ -88,7 +88,7 @@ export const PromptConfigPage: React.FC = () => {
     try {
       const [pRes, bRes] = await Promise.all([
         fetch('/api/prompts', { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch('/api/branches', { headers: { Authorization: `Bearer ${token()}` } }),
+        fetch('/api/admin/branches', { headers: { Authorization: `Bearer ${token()}` } }),
       ]);
       if (pRes.ok) { const d = await pRes.json(); setPrompts(d ?? []); }
       if (bRes.ok) {

@@ -48,7 +48,7 @@ export const ReconConfigPage: React.FC = () => {
   const showToast = (msg: string, ok = true) => { setToast(msg); setToastOk(ok); setTimeout(() => setToast(''), 3000); };
 
   useEffect(() => {
-    fetch('/api/branches', { headers: { Authorization: `Bearer ${token()}` } })
+    fetch('/api/admin/branches', { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.ok ? r.json() : [])
       .then((d: Branch[]) => {
         setBranches(d ?? []);

@@ -88,7 +88,7 @@ export const ReconcilePage: React.FC = () => {
       const [listRes, sumRes, brRes] = await Promise.all([
         fetch(`/api/reconcile?${params}`, { headers: { Authorization: `Bearer ${token()}` } }),
         fetch('/api/reconcile/summary', { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch('/api/branches', { headers: { Authorization: `Bearer ${token()}` } }),
+        fetch('/api/admin/branches', { headers: { Authorization: `Bearer ${token()}` } }),
       ]);
 
       if (listRes.ok) { const d = await listRes.json(); setItems(d.items ?? []); setTotal(d.total ?? 0); }

@@ -46,7 +46,7 @@ export const InputConfigPage: React.FC = () => {
 
   // Load branches
   useEffect(() => {
-    fetch('/api/branches', { headers: { Authorization: `Bearer ${token()}` } })
+    fetch('/api/admin/branches', { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.ok ? r.json() : [])
       .then((d: Branch[]) => { setBranches(d ?? []); if (d.length > 0) setSelBranch(d[0]); })
       .catch(() => {});
