@@ -3,9 +3,10 @@ import React, { useEffect, useState } from 'react';
 const token = () => localStorage.getItem('auth_token') ?? '';
 
 interface ColMapping { col: string; field: string; label: string; enabled: boolean; }
-interface Branch { id: number; name: string; code: string; }
+interface Branch  { id: number; name: string; code: string; }
+interface DocType { id: number; code: string; name: string; icon: string; color: string; bgColor: string; isActive: boolean; }
 
-// Default columns per doc type (different fields relevant to each)
+// Static fallback columns per doc type code (used when API has no saved mapping)
 const COLS_BY_DOCTYPE: Record<string, ColMapping[]> = {
   _common: [
     { col: 'A', field: 'invoice_number',  label: 'Số hóa đơn',       enabled: true },
@@ -48,12 +49,6 @@ const COLS_BY_DOCTYPE: Record<string, ColMapping[]> = {
 
 const getDefaultCols = (dt: string) => COLS_BY_DOCTYPE[dt] ?? COLS_BY_DOCTYPE['_common'];
 
-const DOC_TYPES = [
-  { value: 'ground_handling', label: 'Ground Handling', icon: '✈️', color: '#5B21B6', bg: '#EDE9FE' },
-  { value: 'airport_charges', label: 'Airport Charges',  icon: '🏢', color: '#1E40AF', bg: '#DBEAFE' },
-  { value: 'fuel',            label: 'Fuel',             icon: '⛽', color: '#92400E', bg: '#FEF3C7' },
-  { value: 'catering',        label: 'Catering',         icon: '🍱', color: '#166534', bg: '#DCFCE7' },
-];
 const CURRENCY_FORMATS = ['¥ #,##0.00', '¥ #,##0', 'USD #,##0.00', '€ #,##0.00', '#,##0 VND'];
 const DATE_FORMATS      = ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY', 'DD-MM-YYYY'];
 
@@ -68,14 +63,15 @@ const DEFAULT_CFG = (): BranchConfig => ({
   templateName: 'CV2006_Template_VNA_v3.xlsx', startRow: 5,
   currencyFormat: '¥ #,##0.00', dateFormat: 'YYYY-MM-DD',
   includeAIConfidence: true, includeAuditTrail: true,
-  columnMapping: Object.fromEntries(DOC_TYPES.map(d => [d.value, getDefaultCols(d.value)])),
+  columnMapping: {},
   loaded: false,
 });
 
 export const OutputConfigPage: React.FC = () => {
   const [branches, setBranches]       = useState<Branch[]>([]);
+  const [docTypes, setDocTypes]       = useState<DocType[]>([]);
   const [selBranch, setSelBranch]     = useState<Branch | null>(null);
-  const [selDocType, setSelDocType]   = useState(DOC_TYPES[0].value);
+  const [selDocType, setSelDocType]   = useState('');
   const [cfgMap, setCfgMap]           = useState<Record<number, BranchConfig>>({});
   const [loading, setLoading]         = useState(false);
   const [saving, setSaving]           = useState(false);
@@ -88,6 +84,10 @@ export const OutputConfigPage: React.FC = () => {
     fetch('/api/admin/branches', { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.ok ? r.json() : [])
       .then((d: Branch[]) => { setBranches(d ?? []); if (d.length > 0) setSelBranch(d[0]); })
+      .catch(() => {});
+    fetch('/api/doc-types', { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then((d: DocType[]) => { setDocTypes(d ?? []); if (d.length > 0) setSelDocType(d[0].code); })
       .catch(() => {});
   }, []);
 
@@ -109,9 +109,9 @@ export const OutputConfigPage: React.FC = () => {
           try {
             const saved: ColMapping[] = JSON.parse(d.columnMapping) || [];
             if (saved.length > 0) {
-              // Store under current docType if no per-type saved
+              // Apply saved mapping to all known doc types as baseline
               cfg.columnMapping['_common'] = saved;
-              DOC_TYPES.forEach(dt => { cfg.columnMapping[dt.value] = saved; });
+              docTypes.forEach(dt => { cfg.columnMapping[dt.code] = saved; });
             }
           } catch {}
         }
@@ -151,7 +151,7 @@ export const OutputConfigPage: React.FC = () => {
     else showToast('Lỗi khi lưu', false);
   };
 
-  const docTypeMeta = DOC_TYPES.find(d => d.value === selDocType)!;
+  const docTypeMeta = docTypes.find(d => d.code === selDocType);
 
   return (
     <div>
@@ -270,14 +270,14 @@ export const OutputConfigPage: React.FC = () => {
 
               {/* DocType tabs for column mapping */}
               <div className="flex gap-2 mb-2 flex-wrap">
-                {DOC_TYPES.map(d => {
-                  const active = selDocType === d.value;
+                {docTypes.map(d => {
+                  const active = selDocType === d.code;
                   return (
-                    <button key={d.value} onClick={() => setSelDocType(d.value)}
+                    <button key={d.code} onClick={() => setSelDocType(d.code)}
                       style={{ padding: '7px 13px', borderRadius: 7, cursor: 'pointer', border: 'none', fontWeight: 700, fontSize: 12,
-                        background: active ? d.color : d.bg, color: active ? '#fff' : d.color,
+                        background: active ? d.color : d.bgColor, color: active ? '#fff' : d.color,
                         outline: active ? `2px solid ${d.color}` : '1px solid var(--border)', outlineOffset: active ? 2 : 0 }}>
-                      {d.icon} {d.label}
+                      {d.icon} {d.name}
                     </button>
                   );
                 })}
@@ -287,8 +287,8 @@ export const OutputConfigPage: React.FC = () => {
               <div className="ds-card overflow-hidden">
                 <div className="ds-ch">
                   <div className="ds-ch-title">
-                    <div className="ds-ch-ic" style={{ background: docTypeMeta.bg }}>🗂️</div>
-                    Mapping cột — <span style={{ color: docTypeMeta.color }}>{docTypeMeta.label}</span>
+                    <div className="ds-ch-ic" style={{ background: docTypeMeta?.bgColor ?? '#EDE9FE' }}>🗂️</div>
+                    Mapping cột — <span style={{ color: docTypeMeta?.color ?? 'var(--fox)' }}>{docTypeMeta?.name ?? selDocType}</span>
                   </div>
                   <span className="ds-badge ds-b-ok">{cols.filter(c => c.enabled).length} cột bật</span>
                 </div>

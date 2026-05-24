@@ -2,14 +2,13 @@ import React, { useEffect, useState } from 'react';
 
 const token = () => localStorage.getItem('auth_token') ?? '';
 
+interface DocType { id: number; code: string; name: string; icon: string; color: string; bgColor: string; isActive: boolean; }
+
 interface BranchRow {
   id: number;
   code: string;
   name: string;
-  groundHandling: number;
-  airportCharges: number;
-  fuel: number;
-  catering: number;
+  byDocType: Record<string, number>;
   total: number;
   difference: number;
   matchRate: number;
@@ -26,86 +25,90 @@ interface KpiData {
 }
 
 export const SummaryPage: React.FC = () => {
-  const [kpi, setKpi]       = useState<KpiData>({ totalCost: 0, matchRate: 0, totalDiff: 0, aiSavings: 0, totalDocs: 0, matchedDocs: 0 });
-  const [rows, setRows]     = useState<BranchRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [period, setPeriod]  = useState(() => {
+  const [kpi, setKpi]           = useState<KpiData>({ totalCost: 0, matchRate: 0, totalDiff: 0, aiSavings: 0, totalDocs: 0, matchedDocs: 0 });
+  const [rows, setRows]         = useState<BranchRow[]>([]);
+  const [docTypes, setDocTypes] = useState<DocType[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [period, setPeriod]     = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [statsRes, reconRes, branchRes] = await Promise.all([
-        fetch(`/api/stats`, { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch(`/api/reconcile?limit=1000&period=${period}`, { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch('/api/admin/branches', { headers: { Authorization: `Bearer ${token()}` } }),
-      ]);
+  // Load doc types once
+  useEffect(() => {
+    fetch('/api/doc-types', { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then((d: DocType[]) => setDocTypes(d ?? []))
+      .catch(() => {});
+  }, []);
 
-      let allItems: any[] = [];
-      let branches: any[]  = [];
+  // Load data when period or docTypes changes
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [statsRes, reconRes, branchRes] = await Promise.all([
+          fetch(`/api/stats`,                                             { headers: { Authorization: `Bearer ${token()}` } }),
+          fetch(`/api/reconcile?limit=1000&period=${period}`,            { headers: { Authorization: `Bearer ${token()}` } }),
+          fetch('/api/admin/branches',                                   { headers: { Authorization: `Bearer ${token()}` } }),
+        ]);
 
-      if (reconRes.ok) { const d = await reconRes.json(); allItems = d.items ?? []; }
-      if (branchRes.ok) { const d = await branchRes.json(); branches = d ?? []; }
+        let allItems: any[] = [];
+        let branches: any[] = [];
 
-      // Compute KPI
-      const matched = allItems.filter((i: any) => i.status === 'matched' || i.status === 'approved');
-      const totalCost = allItems.reduce((s: number, i: any) => s + (i.ocrAmount ?? 0), 0);
-      const totalDiff = allItems.reduce((s: number, i: any) => s + Math.abs(i.difference ?? 0), 0);
-      const matchRate = allItems.length > 0 ? (matched.length / allItems.length) * 100 : 0;
+        if (reconRes.ok)  { const d = await reconRes.json();  allItems = d.items ?? []; }
+        if (branchRes.ok) { const d = await branchRes.json(); branches = d ?? []; }
 
-      if (statsRes.ok) {
-        const st = await statsRes.json();
-        setKpi({
-          totalCost,
-          matchRate,
-          totalDiff,
-          aiSavings: st.kpi?.thisMonthCost ?? 0,
-          totalDocs: allItems.length,
-          matchedDocs: matched.length,
-        });
-      } else {
-        setKpi({ totalCost, matchRate, totalDiff, aiSavings: 0, totalDocs: allItems.length, matchedDocs: matched.length });
-      }
+        // Compute KPI
+        const matched   = allItems.filter((i: any) => i.status === 'matched' || i.status === 'approved');
+        const totalCost = allItems.reduce((s: number, i: any) => s + (i.ocrAmount   ?? 0), 0);
+        const totalDiff = allItems.reduce((s: number, i: any) => s + Math.abs(i.difference ?? 0), 0);
+        const matchRate = allItems.length > 0 ? (matched.length / allItems.length) * 100 : 0;
 
-      // Build branch rows
-      const branchRows: BranchRow[] = branches.map((b: any) => {
-        const bItems = allItems.filter((i: any) => i.branchId === b.id);
-        const byType = (t: string) => bItems
-          .filter((i: any) => i.document?.docType === t)
-          .reduce((s: number, i: any) => s + (i.ocrAmount ?? 0), 0);
-        const total = bItems.reduce((s: number, i: any) => s + (i.ocrAmount ?? 0), 0);
-        const diff  = bItems.reduce((s: number, i: any) => s + Math.abs(i.difference ?? 0), 0);
-        const ok    = bItems.filter((i: any) => i.status === 'matched' || i.status === 'approved').length;
-        return {
-          id: b.id, code: b.code, name: b.name,
-          groundHandling: byType('ground_handling'),
-          airportCharges: byType('airport_charges'),
-          fuel: byType('fuel'),
-          catering: byType('catering'),
-          total, difference: diff,
-          matchRate: bItems.length > 0 ? (ok / bItems.length) * 100 : 0,
-          count: bItems.length,
-        };
-      }).filter((r: BranchRow) => r.count > 0);
+        if (statsRes.ok) {
+          const st = await statsRes.json();
+          setKpi({ totalCost, matchRate, totalDiff, aiSavings: st.kpi?.thisMonthCost ?? 0, totalDocs: allItems.length, matchedDocs: matched.length });
+        } else {
+          setKpi({ totalCost, matchRate, totalDiff, aiSavings: 0, totalDocs: allItems.length, matchedDocs: matched.length });
+        }
 
-      setRows(branchRows);
-    } catch {}
-    setLoading(false);
-  };
+        // Build branch rows with dynamic doc type amounts
+        const branchRows: BranchRow[] = branches.map((b: any) => {
+          const bItems = allItems.filter((i: any) => i.branchId === b.id);
+          const byDocType: Record<string, number> = {};
+          docTypes.forEach(dt => {
+            byDocType[dt.code] = bItems
+              .filter((i: any) => i.document?.docType === dt.code)
+              .reduce((s: number, i: any) => s + (i.ocrAmount ?? 0), 0);
+          });
+          const total = bItems.reduce((s: number, i: any) => s + (i.ocrAmount ?? 0), 0);
+          const diff  = bItems.reduce((s: number, i: any) => s + Math.abs(i.difference ?? 0), 0);
+          const ok    = bItems.filter((i: any) => i.status === 'matched' || i.status === 'approved').length;
+          return {
+            id: b.id, code: b.code, name: b.name,
+            byDocType, total, difference: diff,
+            matchRate: bItems.length > 0 ? (ok / bItems.length) * 100 : 0,
+            count: bItems.length,
+          };
+        }).filter((r: BranchRow) => r.count > 0);
 
-  useEffect(() => { load(); }, [period]);
+        setRows(branchRows);
+      } catch {}
+      setLoading(false);
+    };
+    load();
+  }, [period, docTypes]);
 
-  const fmt = (v: number) => v === 0 ? '—' : `¥${v.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}`;
+  const fmt    = (v: number) => v === 0 ? '—' : `¥${v.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}`;
   const fmtPct = (v: number) => `${v.toFixed(1)}%`;
-
   const matchColor = (r: number) => r >= 95 ? 'var(--ok)' : r >= 80 ? 'var(--warn)' : 'var(--err)';
 
+  const colSpan = docTypes.length + 4; // branch + N docTypes + total + diff + match%
+
   const exportCSV = () => {
-    const header = 'Chi nhánh,Ground Hdl,Airport Chrg,Fuel,Catering,Tổng,Chênh lệch,% Khớp\n';
+    const header = ['Chi nhánh', ...docTypes.map(d => d.name), 'Tổng', 'Chênh lệch', '% Khớp'].join(',') + '\n';
     const csv = rows.map(r =>
-      `${r.code} ${r.name},${r.groundHandling},${r.airportCharges},${r.fuel},${r.catering},${r.total},${r.difference},${r.matchRate.toFixed(1)}%`
+      [`${r.code} ${r.name}`, ...docTypes.map(d => r.byDocType[d.code] ?? 0), r.total, r.difference, `${r.matchRate.toFixed(1)}%`].join(',')
     ).join('\n');
     const blob = new Blob([header + csv], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
@@ -174,18 +177,14 @@ export const SummaryPage: React.FC = () => {
             <thead>
               <tr>
                 <th>Chi nhánh (Airport)</th>
-                <th style={{ textAlign: 'right' }}>
-                  <span className="ds-tag ds-t-grd">Ground Hdl</span>
-                </th>
-                <th style={{ textAlign: 'right' }}>
-                  <span className="ds-tag ds-t-apt">Airport Chrg</span>
-                </th>
-                <th style={{ textAlign: 'right' }}>
-                  <span className="ds-tag ds-t-fuel">Fuel</span>
-                </th>
-                <th style={{ textAlign: 'right' }}>
-                  <span className="ds-tag ds-t-ctr">Catering</span>
-                </th>
+                {docTypes.map(d => (
+                  <th key={d.code} style={{ textAlign: 'right' }}>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 700,
+                      background: d.bgColor, color: d.color,
+                    }}>{d.icon} {d.name}</span>
+                  </th>
+                ))}
                 <th style={{ textAlign: 'right' }}>Tổng</th>
                 <th style={{ textAlign: 'right' }}>Chênh lệch</th>
                 <th style={{ textAlign: 'center' }}>% Khớp</th>
@@ -193,9 +192,9 @@ export const SummaryPage: React.FC = () => {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--t3)' }}>Đang tải...</td></tr>
+                <tr><td colSpan={colSpan} style={{ textAlign: 'center', padding: 32, color: 'var(--t3)' }}>Đang tải...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--t3)' }}>
+                <tr><td colSpan={colSpan} style={{ textAlign: 'center', padding: 32, color: 'var(--t3)' }}>
                   Chưa có dữ liệu cho kỳ {period}
                 </td></tr>
               ) : (
@@ -208,10 +207,11 @@ export const SummaryPage: React.FC = () => {
                           <span style={{ color: 'var(--t2)', fontSize: 12 }}>{r.name}</span>
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right' }}><span className="ds-amt ds-c2">{fmt(r.groundHandling)}</span></td>
-                      <td style={{ textAlign: 'right' }}><span className="ds-amt ds-c2">{fmt(r.airportCharges)}</span></td>
-                      <td style={{ textAlign: 'right' }}><span className="ds-amt ds-c2">{fmt(r.fuel)}</span></td>
-                      <td style={{ textAlign: 'right' }}><span className="ds-amt ds-c2">{fmt(r.catering)}</span></td>
+                      {docTypes.map(d => (
+                        <td key={d.code} style={{ textAlign: 'right' }}>
+                          <span className="ds-amt ds-c2">{fmt(r.byDocType[d.code] ?? 0)}</span>
+                        </td>
+                      ))}
                       <td style={{ textAlign: 'right' }}><span className="ds-amt font-extrabold">{fmt(r.total)}</span></td>
                       <td style={{ textAlign: 'right' }}>
                         <span className="ds-amt" style={{ color: r.difference > 0 ? 'var(--warn)' : 'var(--t3)' }}>
@@ -233,10 +233,11 @@ export const SummaryPage: React.FC = () => {
                   {/* Totals row */}
                   <tr style={{ background: 'var(--surface-2)', fontWeight: 800 }}>
                     <td style={{ fontWeight: 800 }}>📊 TỔNG CỘNG</td>
-                    <td style={{ textAlign: 'right' }}><span className="ds-amt">{fmt(rows.reduce((s,r) => s+r.groundHandling, 0))}</span></td>
-                    <td style={{ textAlign: 'right' }}><span className="ds-amt">{fmt(rows.reduce((s,r) => s+r.airportCharges, 0))}</span></td>
-                    <td style={{ textAlign: 'right' }}><span className="ds-amt">{fmt(rows.reduce((s,r) => s+r.fuel, 0))}</span></td>
-                    <td style={{ textAlign: 'right' }}><span className="ds-amt">{fmt(rows.reduce((s,r) => s+r.catering, 0))}</span></td>
+                    {docTypes.map(d => (
+                      <td key={d.code} style={{ textAlign: 'right' }}>
+                        <span className="ds-amt">{fmt(rows.reduce((s, r) => s + (r.byDocType[d.code] ?? 0), 0))}</span>
+                      </td>
+                    ))}
                     <td style={{ textAlign: 'right' }}><span className="ds-amt ds-c-fox">{fmt(rows.reduce((s,r) => s+r.total, 0))}</span></td>
                     <td style={{ textAlign: 'right' }}><span className="ds-amt ds-c-warn">{fmt(rows.reduce((s,r) => s+r.difference, 0))}</span></td>
                     <td style={{ textAlign: 'center' }}>

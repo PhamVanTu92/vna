@@ -26,7 +26,8 @@ interface ReconcileItem {
 }
 
 interface Summary { matched: number; minorMismatch: number; majorMismatch: number; notFound: number; flagged: number; approved: number; }
-interface Branch { id: number; name: string; code: string; }
+interface Branch  { id: number; name: string; code: string; }
+interface DocType { id: number; code: string; name: string; icon: string; color: string; bgColor: string; }
 
 const STATUS_MAP: Record<string, { label: string; className: string; icon: string }> = {
   matched:        { label: 'Khớp',        className: 'ds-b-ok',   icon: '✅' },
@@ -50,6 +51,7 @@ export const ReconcilePage: React.FC = () => {
   const [items, setItems]           = useState<ReconcileItem[]>([]);
   const [summary, setSummary]       = useState<Summary>({ matched: 0, minorMismatch: 0, majorMismatch: 0, notFound: 0, flagged: 0, approved: 0 });
   const [branches, setBranches]     = useState<Branch[]>([]);
+  const [docTypes, setDocTypes]     = useState<DocType[]>([]);
   const [loading, setLoading]       = useState(true);
   const [total, setTotal]           = useState(0);
   const [page, setPage]             = useState(1);
@@ -85,15 +87,17 @@ export const ReconcilePage: React.FC = () => {
       if (fPeriod) params.set('period', fPeriod);
       if (fSearch) params.set('search', fSearch);
 
-      const [listRes, sumRes, brRes] = await Promise.all([
+      const [listRes, sumRes, brRes, dtRes] = await Promise.all([
         fetch(`/api/reconcile?${params}`, { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch('/api/reconcile/summary', { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch('/api/admin/branches', { headers: { Authorization: `Bearer ${token()}` } }),
+        fetch('/api/reconcile/summary',   { headers: { Authorization: `Bearer ${token()}` } }),
+        fetch('/api/admin/branches',      { headers: { Authorization: `Bearer ${token()}` } }),
+        fetch('/api/doc-types',           { headers: { Authorization: `Bearer ${token()}` } }),
       ]);
 
       if (listRes.ok) { const d = await listRes.json(); setItems(d.items ?? []); setTotal(d.total ?? 0); }
       if (sumRes.ok)  { const d = await sumRes.json(); setSummary(d); }
       if (brRes.ok)   { const d = await brRes.json(); setBranches(d ?? []); }
+      if (dtRes.ok)   { const d = await dtRes.json(); setDocTypes(d ?? []); }
     } catch {}
     setLoading(false);
   }, [page, fBranch, fStatus, fPeriod, fSearch]);
@@ -260,16 +264,17 @@ export const ReconcilePage: React.FC = () => {
                     </td>
                     <td>
                       {item.document.docType
-                        ? <span className={`ds-tag ${
-                            item.document.docType === 'ground_handling' ? 'ds-t-grd'
-                          : item.document.docType === 'airport_charges' ? 'ds-t-apt'
-                          : item.document.docType === 'catering'        ? 'ds-t-ctr'
-                          : 'ds-t-fuel'}`}>
-                            {item.document.docType === 'ground_handling' ? 'Ground Hdl'
-                           : item.document.docType === 'airport_charges' ? 'Airport Chrg'
-                           : item.document.docType === 'catering'        ? 'Catering'
-                           : 'Fuel'}
-                          </span>
+                        ? (() => {
+                            const dt = docTypes.find(d => d.code === item.document.docType);
+                            return (
+                              <span style={{
+                                display: 'inline-block', padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 700,
+                                background: dt?.bgColor ?? '#F3F4F6', color: dt?.color ?? '#374151',
+                              }}>
+                                {dt?.icon ?? '📄'} {dt?.name ?? item.document.docType}
+                              </span>
+                            );
+                          })()
                         : '—'}
                     </td>
                     <td style={{ color: 'var(--t2)', fontSize: 11.5 }}>{item.document.period ?? '—'}</td>
