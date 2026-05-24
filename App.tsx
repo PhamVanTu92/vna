@@ -94,7 +94,7 @@ const App: React.FC = () => {
             <Routes>
               {/* Nghiệp vụ */}
               <Route path="/"           element={<DashboardPage />} />
-              <Route path="/upload"     element={<OcrPage branchId={authUser?.branchId} />} />
+              <Route path="/upload"     element={<OcrPage />} />
               <Route path="/reconcile"  element={<ReconcilePage />} />
               <Route path="/summary"    element={<SummaryPage />} />
               <Route path="/documents"  element={<DocumentsPage />} />

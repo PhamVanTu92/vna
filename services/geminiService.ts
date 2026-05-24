@@ -138,13 +138,29 @@ const applyBusinessRules = (item: LineItem): LineItem => {
   };
 };
 
+export interface OcrMeta {
+  fileName?:    string;
+  fileSize?:    number;
+  period?:      string | null;
+  docType?:     string | null;   // loại chứng từ đã chọn
+  branchId?:    number | null;   // chi nhánh (admin có thể chọn khác)
+}
+
+export interface OcrResult {
+  items:          any[];          // LineItem[] for ground_handling, generic for others
+  documentId:     number;
+  docType:        string | null;
+  fieldMappings:  any[];          // returned from server
+  isGroundHandling: boolean;      // true → ResultsTable; false → generic table
+}
+
 export const analyzePdfImages = async (
   base64Images: string[],
-  _systemPrompt?: string,       // deprecated — dùng branch settings từ server
-  _deprecatedApiKey?: string,   // deprecated — API key trên server
-  _selectedModel?: string,      // deprecated — model từ branch settings
-  meta?: { fileName?: string; fileSize?: number; period?: string | null }
-): Promise<LineItem[]> => {
+  _systemPrompt?: string,       // deprecated
+  _deprecatedApiKey?: string,   // deprecated
+  _selectedModel?: string,      // deprecated
+  meta?: OcrMeta
+): Promise<OcrResult> => {
   const response = await fetch('/api/ocr/analyze', {
     method: 'POST',
     headers: {
@@ -155,7 +171,9 @@ export const analyzePdfImages = async (
       base64Images,
       fileName:  meta?.fileName  ?? 'document.pdf',
       fileSize:  meta?.fileSize  ?? 0,
-      period:    meta?.period    ?? null
+      period:    meta?.period    ?? null,
+      docType:   meta?.docType   ?? null,
+      branchId:  meta?.branchId  ?? null,
     })
   });
 
@@ -164,10 +182,31 @@ export const analyzePdfImages = async (
     throw new Error(errorData.error || `Server error: ${response.status}`);
   }
 
-  const { items: rawItems } = await response.json();
+  const serverResp = await response.json();
+  const rawItems:    any[]   = serverResp.items        ?? [];
+  const docType:     string  = serverResp.docType      ?? meta?.docType ?? '';
+  const fieldMappings: any[] = serverResp.fieldMappings ?? [];
+  const documentId:  number  = serverResp.documentId  ?? 0;
 
-  // Apply GL codes, units, and business rules (stays on frontend with constants.ts)
-  const processedData = (rawItems as LineItem[]).map(applyBusinessRules);
+  // Ground-handling: apply existing GL-code, unit, and structure rules
+  const isGroundHandling = !docType || docType === 'ground_handling';
+  if (isGroundHandling) {
+    const processedData = (rawItems as LineItem[]).map(applyBusinessRules);
+    return {
+      items: reconstructReportStructure(processedData),
+      documentId,
+      docType,
+      fieldMappings,
+      isGroundHandling: true,
+    };
+  }
 
-  return reconstructReportStructure(processedData);
+  // Other doc types — return raw items; let the UI display them dynamically
+  return {
+    items: rawItems,
+    documentId,
+    docType,
+    fieldMappings,
+    isGroundHandling: false,
+  };
 };
