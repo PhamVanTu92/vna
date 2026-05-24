@@ -14,6 +14,13 @@ import usersRouter     from './routes/users';
 import branchesRouter  from './routes/branches';
 import documentsRouter from './routes/documents';
 import statsRouter     from './routes/stats';
+import reconcileRouter    from './routes/reconcile';
+import promptsRouter      from './routes/prompts';
+import integrationsRouter from './routes/integrations';
+import inputConfigRouter  from './routes/inputConfig';
+import outputConfigRouter from './routes/outputConfig';
+import reconConfigRouter  from './routes/reconConfig';
+import auditLogRouter     from './routes/auditLog';
 
 const app        = express();
 const PORT       = process.env.PORT || 3001;
@@ -45,6 +52,13 @@ app.use('/api/admin/users',    usersRouter);
 app.use('/api/admin/branches', branchesRouter);
 app.use('/api/documents',      documentsRouter);
 app.use('/api/stats',          statsRouter);
+app.use('/api/reconcile',       reconcileRouter);
+app.use('/api/prompts',         promptsRouter);
+app.use('/api/integrations',    integrationsRouter);
+app.use('/api/config/input',    inputConfigRouter);
+app.use('/api/config/output',   outputConfigRouter);
+app.use('/api/config/recon',    reconConfigRouter);
+app.use('/api/audit-log',       auditLogRouter);
 
 app.get('/health', (_req, res) =>
   res.json({ status: 'ok', env: IS_PROD ? 'production' : 'development', timestamp: new Date().toISOString() })

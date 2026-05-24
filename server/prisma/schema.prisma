@@ -96,5 +96,126 @@ model OcrDocument {
   exportedAt   DateTime?
   createdAt    DateTime  @default(now())
 
+  reconcileResult ReconcileResult?
+
   @@map("ocr_documents")
+}
+
+// ── Reconcile ─────────────────────────────────────────────────────────────────
+model ReconcileResult {
+  id            Int       @id @default(autoincrement())
+  documentId    Int       @unique
+  branchId      Int
+  ocrAmount     Float
+  gasAmount     Float?
+  gasRef        String?
+  difference    Float     @default(0)
+  status        String    @default("not_found")
+  aiConfidence  Float     @default(0)
+  flagReason    String?
+  flagNote      String?
+  approvedById  Int?
+  approvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  document      OcrDocument @relation(fields: [documentId], references: [id])
+
+  @@map("reconcile_results")
+}
+
+// ── Prompt Config ─────────────────────────────────────────────────────────────
+model PromptConfig {
+  id          Int      @id @default(autoincrement())
+  branchId    Int
+  docType     String
+  name        String
+  promptText  String
+  testScore   Float?
+  testTotal   Int?
+  testCorrect Int?
+  isActive    Boolean  @default(true)
+  updatedById Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([branchId, docType])
+  @@map("prompt_configs")
+}
+
+// ── Integration Config ────────────────────────────────────────────────────────
+model IntegrationConfig {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  displayName String
+  isActive    Boolean   @default(false)
+  config      String    @default("{}")
+  lastSyncAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("integration_configs")
+}
+
+// ── Input Config ──────────────────────────────────────────────────────────────
+model InputConfig {
+  id              Int      @id @default(autoincrement())
+  branchId        Int
+  docType         String
+  fieldMappings   String   @default("[]")
+  acceptedFormats String   @default("[\"pdf\",\"xlsx\",\"jpg\"]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([branchId, docType])
+  @@map("input_configs")
+}
+
+// ── Output Config ─────────────────────────────────────────────────────────────
+model OutputConfig {
+  id                  Int      @id @default(autoincrement())
+  branchId            Int      @unique
+  templateName        String   @default("CV2006_Template_VNA_v3.xlsx")
+  startRow            Int      @default(5)
+  currencyFormat      String   @default("¥ #,##0.00")
+  dateFormat          String   @default("YYYY-MM-DD")
+  includeAIConfidence Boolean  @default(true)
+  includeAuditTrail   Boolean  @default(true)
+  columnMapping       String   @default("[]")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("output_configs")
+}
+
+// ── Recon Config ──────────────────────────────────────────────────────────────
+model ReconConfig {
+  id              Int      @id @default(autoincrement())
+  branchId        Int      @unique
+  matchKeys       String   @default("[\"invoice_number\",\"vendor\",\"period\"]")
+  tolerancePct    Float    @default(0.5)
+  toleranceAmt    Float    @default(1000)
+  onNotFound      String   @default("mark_new")
+  autoApproveConf Float    @default(99.0)
+  autoAfterOcr    Boolean  @default(true)
+  scheduleBatch   Boolean  @default(true)
+  scheduleType    String   @default("daily_0200")
+  maxTimeoutSec   Int      @default(30)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("recon_configs")
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  action    String
+  userId    Int?
+  branchId  Int?
+  detail    String
+  metadata  String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
 }

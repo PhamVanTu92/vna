@@ -1,16 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LicenseGuard }      from './components/LicenseGuard';
-import { LoginPage }         from './components/LoginPage';
-import { SetupPage }         from './components/SetupPage';
-import { MainLayout }        from './layouts/MainLayout';
-import { OcrPage }           from './pages/OcrPage';
-import { DocumentsPage }     from './pages/DocumentsPage';
-import { StatsPage }         from './pages/StatsPage';
-import { UsersPage }         from './pages/UsersPage';
-import { BranchesPage }      from './pages/BranchesPage';
-import { SettingsPage }      from './pages/SettingsPage';
-import { LicenseAdminPage }  from './pages/LicenseAdminPage';
+import { LicenseGuard }        from './components/LicenseGuard';
+import { LoginPage }           from './components/LoginPage';
+import { SetupPage }           from './components/SetupPage';
+import { MainLayout }          from './layouts/MainLayout';
+import { OcrPage }             from './pages/OcrPage';
+import { DocumentsPage }       from './pages/DocumentsPage';
+import { StatsPage }           from './pages/StatsPage';
+import { UsersPage }           from './pages/UsersPage';
+import { BranchesPage }        from './pages/BranchesPage';
+import { SettingsPage }        from './pages/SettingsPage';
+import { LicenseAdminPage }    from './pages/LicenseAdminPage';
+import { DashboardPage }       from './pages/DashboardPage';
+import { ReconcilePage }       from './pages/ReconcilePage';
+import { SummaryPage }         from './pages/SummaryPage';
+import { IntegrationPage }     from './pages/IntegrationPage';
+import { InputConfigPage }     from './pages/InputConfigPage';
+import { OutputConfigPage }    from './pages/OutputConfigPage';
+import { PromptConfigPage }    from './pages/PromptConfigPage';
+import { ReconConfigPage }     from './pages/ReconConfigPage';
+import { AuditLogPage }        from './pages/AuditLogPage';
 
 interface AuthUser { id: number; email: string; fullName: string; role: string; branchId?: number | null; }
 
@@ -20,24 +29,22 @@ function getStoredUser():  AuthUser | null {
 }
 
 const App: React.FC = () => {
-  const [authToken,  setAuthToken]  = useState<string | null>(getStoredToken);
-  const [authUser,   setAuthUser]   = useState<AuthUser | null>(getStoredUser);
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [authLoading,setAuthLoading]= useState(true);
+  const [authToken,   setAuthToken]   = useState<string | null>(getStoredToken);
+  const [authUser,    setAuthUser]    = useState<AuthUser | null>(getStoredUser);
+  const [needsSetup,  setNeedsSetup]  = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
     const verify = async () => {
       const token = getStoredToken();
       if (!token) {
-        // Kiểm tra first-run: nếu /api/auth/setup trả 400 (thiếu body) thì chưa setup
-        // nếu 403 thì đã có user rồi
         try {
           const r = await fetch('/api/auth/setup', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})
           });
           setNeedsSetup(r.status !== 403);
-        } catch { /* server chưa chạy */ }
+        } catch {}
         setAuthLoading(false);
         return;
       }
@@ -47,10 +54,8 @@ const App: React.FC = () => {
           const { user } = await r.json();
           setAuthUser(user);
           localStorage.setItem('auth_user', JSON.stringify(user));
-        } else {
-          logout();
-        }
-      } catch { /* giữ token, thử lại sau */ }
+        } else { logout(); }
+      } catch {}
       setAuthLoading(false);
     };
     verify();
@@ -68,13 +73,11 @@ const App: React.FC = () => {
     setAuthToken(null); setAuthUser(null);
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-slate-400 text-sm">Đang tải...</div>
-      </div>
-    );
-  }
+  if (authLoading) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+      <div className="text-[13px]" style={{ color: 'var(--t3)' }}>Đang tải...</div>
+    </div>
+  );
 
   const isAdmin    = authUser?.role === 'system_admin' || authUser?.role === 'branch_admin';
   const isSysAdmin = authUser?.role === 'system_admin';
@@ -89,26 +92,28 @@ const App: React.FC = () => {
         <BrowserRouter>
           <MainLayout user={authUser!} onLogout={logout}>
             <Routes>
-              {/* Chính */}
-              <Route path="/"          element={<OcrPage branchId={authUser?.branchId} />} />
-              <Route path="/documents" element={<DocumentsPage />} />
-              <Route path="/stats"     element={<StatsPage />} />
+              {/* Nghiệp vụ */}
+              <Route path="/"           element={<DashboardPage />} />
+              <Route path="/upload"     element={<OcrPage branchId={authUser?.branchId} />} />
+              <Route path="/reconcile"  element={<ReconcilePage />} />
+              <Route path="/summary"    element={<SummaryPage />} />
+              <Route path="/documents"  element={<DocumentsPage />} />
+              <Route path="/stats"      element={<StatsPage />} />
 
-              {/* Quản trị */}
-              {isAdmin && (
-                <>
-                  <Route path="/admin/users"    element={<UsersPage />} />
-                  <Route path="/admin/settings" element={<SettingsPage user={authUser!} />} />
-                  {isSysAdmin && (
-                    <>
-                      <Route path="/admin/branches" element={<BranchesPage />} />
-                      <Route path="/admin/license"  element={<LicenseAdminPage />} />
-                    </>
-                  )}
-                </>
-              )}
+              {/* Cài đặt */}
+              <Route path="/admin/users"        element={<UsersPage />} />
+              <Route path="/admin/integration"  element={<IntegrationPage />} />
+              <Route path="/admin/input-config" element={<InputConfigPage />} />
+              <Route path="/admin/output-config" element={<OutputConfigPage />} />
+              <Route path="/admin/prompts"      element={<PromptConfigPage />} />
+              <Route path="/admin/recon-config" element={<ReconConfigPage />} />
+              <Route path="/admin/audit"        element={<AuditLogPage />} />
 
-              {/* Fallback */}
+              {/* Hệ thống */}
+              {isSysAdmin && <Route path="/admin/branches" element={<BranchesPage />} />}
+              {isAdmin    && <Route path="/admin/settings" element={<SettingsPage user={authUser!} />} />}
+              {isSysAdmin && <Route path="/admin/license"  element={<LicenseAdminPage />} />}
+
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </MainLayout>

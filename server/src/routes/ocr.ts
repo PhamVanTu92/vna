@@ -154,6 +154,29 @@ router.post('/analyze', authMiddleware as any, async (req: AuthRequest, res: Res
     }
   });
 
+  // Ghi AuditLog
+  await prisma.auditLog.create({
+    data: {
+      action: 'OCR_COMPLETED',
+      userId: req.user!.id,
+      branchId: branchId ?? 1,
+      detail: `OCR hoàn tất ${fileName ?? 'document.pdf'} · ${estimatedTokens} tokens · ${items.length} items`,
+      ipAddress: req.ip
+    }
+  });
+
+  // Tạo ReconcileResult với status not_found (pending reconciliation)
+  await prisma.reconcileResult.create({
+    data: {
+      documentId: docRecord.id,
+      branchId: branchId ?? 1,
+      ocrAmount: items.reduce((sum: number, item: any) => sum + (item.totalAmount ?? 0), 0),
+      status: 'not_found',
+      aiConfidence: 0,
+      difference: 0
+    }
+  });
+
   return res.json({ items, documentId: docRecord.id });
 });
 
