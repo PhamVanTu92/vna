@@ -33,7 +33,7 @@ export const BranchesPage: React.FC = () => {
   const load = async () => {
     setLoading(true);
     const res = await fetch('/api/admin/branches', { headers: authHeader() });
-    const { branches: flat } = await res.json();
+    const flat = await res.json();
     setBranches(flat ?? []);
     setLoading(false);
   };

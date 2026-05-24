@@ -65,7 +65,7 @@ export const UsersPage: React.FC = () => {
         fetch('/api/admin/branches', { headers: authHeader() }).then(r => r.json()),
       ]);
       setUsers(ur.users ?? []);
-      setBranches(br.branches ?? []);
+      setBranches(br ?? []);
     } catch {}
     setLoading(false);
   };

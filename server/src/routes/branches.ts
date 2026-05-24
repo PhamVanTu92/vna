@@ -15,7 +15,7 @@ router.get('/', async (_req, res) => {
     },
     orderBy: [{ parentId: 'asc' }, { name: 'asc' }]
   });
-  return res.json({ branches });
+  return res.json(branches);
 });
 
 // ── POST /api/admin/branches ──────────────────────────────────────────────────

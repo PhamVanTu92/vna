@@ -29,7 +29,7 @@ export const SettingsPage: React.FC<{ user: AuthUser }> = ({ user }) => {
     const init = async () => {
       if (isSysAdmin) {
         const res = await fetch('/api/admin/branches', { headers: authHeader() });
-        const { branches: list } = await res.json();
+        const list = await res.json();
         setBranches(list ?? []);
         if (list?.length > 0) setSelectedBranch(list[0].id);
       } else {
